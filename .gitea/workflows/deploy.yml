@@ -1,0 +1,51 @@
+name: Deploy TraceSafe
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    container:
+        image: python:3.14-alpine
+        options: --network=host
+
+    env:
+      TESTCONTAINERS_RYUK_DISABLED: "false"
+      # Si l'option --network=host ne suffit pas, on force l'IP de l'hôte Docker
+      TESTCONTAINERS_HOST_OVERRIDE: "host.docker.internal"
+
+    steps:
+      - name: Install Node.js and Git
+        run: apk add --no-cache nodejs git gcc musl-dev linux-headers libffi-dev
+
+      - name: Check out port code
+        uses: actions/checkout@v4
+
+      - name: Install packages
+        run: |
+          pip install --no-cache-dir --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run a multi-line script
+        run: |
+          pytest
+
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out port code
+        uses: actions/checkout@v4
+
+      - name: Write config/.env
+        run: |
+          echo '${{ toJson(vars) }}' | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' > config/.env
+
+      - name: Deploy
+        run: docker compose --env-file config/.env up -d --remove-orphans --build
+
+
